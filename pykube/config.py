@@ -71,9 +71,9 @@ class KubeConfig(object):
         filename = os.path.expanduser(filename)
         if not os.path.isfile(filename):
             raise exceptions.PyKubeError("Configuration file {} not found".format(filename))
-        with open(filename,'r') as f:
+        with open(filename, 'r') as f:
             doc = yaml.safe_load(f.read())
-        self = cls(doc,verify)
+        self = cls(doc, verify)
         self.filename = filename
         return self
 
@@ -86,10 +86,9 @@ class KubeConfig(object):
         self.verify = verify
         if "current-context" in doc and doc["current-context"]:
             self.set_current_context(doc["current-context"])
-        if self.current_context == None:
+        if self.current_context is None:
             self.set_current_context('default')
-            self.doc["clusters"][0]["name"] = 'default' #If current_context is not set, consider the first cluster as default.
-
+            self.doc["clusters"][0]["name"] = 'default'  # If current_context is not set, consider the first cluster as default.
 
     def set_current_context(self, value):
         """
@@ -114,7 +113,6 @@ class KubeConfig(object):
                 BytesOrFile.maybe_set(c, "certificate-authority")
             self._clusters = cs
         return self._clusters
-
 
     @property
     def users(self):
@@ -211,4 +209,3 @@ class BytesOrFile(object):
             with tempfile.NamedTemporaryFile(delete=False) as f:
                 f.write(self._bytes)
             return f.name
-

@@ -179,4 +179,3 @@ def as_selector(value):
         else:
             raise ValueError("{} is not a valid comparsion operator".format(op))
     return ",".join(s)
-

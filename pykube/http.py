@@ -50,7 +50,7 @@ class HTTPClient(object):
         s = requests.Session()
         if "certificate-authority" in self.config.cluster:
             s.verify = self.config.cluster["certificate-authority"].filename()
-        if verify == False:
+        if not verify:
             s.verify = False
         if "token" in self.config.user and self.config.user["token"]:
             s.headers["Authorization"] = "Bearer {}".format(self.config.user["token"])
@@ -183,4 +183,3 @@ class HTTPClient(object):
            - `kwargs`: Keyword arguments
         """
         return self.session.delete(*args, **self.get_kwargs(**kwargs))
-

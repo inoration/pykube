@@ -21,7 +21,6 @@ class APIObject(object):
         self.api = api
         self.set_obj(obj)
 
-
     def set_obj(self, obj):
         self.obj = obj
         self._original_obj = copy.deepcopy(obj)
@@ -84,7 +83,7 @@ class APIObject(object):
         if r.status_code != 404:
             self.api.raise_for_status(r)
 
-    def scale(self,replicas):
+    def scale(self, replicas):
         r = self.api.patch(**self.api_kwargs(
             headers={"Content-Type": "application/merge-patch+json"},
             data='{"spec": {"replicas": %d}}' % replicas,
@@ -93,7 +92,7 @@ class APIObject(object):
             self.api.raise_for_status(r)
 
     @property
-    def status(self,all=False):
+    def status(self, all=False):
         r = self.api.get(**self.api_kwargs())
         if r.status_code != 404:
             self.api.raise_for_status(r)
@@ -200,18 +199,16 @@ class ReplicationController(NamespacedAPIObject, ReplicatedMixin, ScalableMixin)
     kind = "ReplicationController"
 
     def wait_to_death(self):
-        while (self.status['replicas']!=0):
+        while (self.status['replicas'] != 0):
             sleep(0.1)
         r = self.api.delete(**self.api_kwargs())
         if r.status_code != 404:
             self.api.raise_for_status(r)
 
-
     def delete(self, block=True):
         self.scale(0)
         if block:
             self.wait_to_death()
-
 
 
 class ReplicaSet(NamespacedAPIObject, ReplicatedMixin, ScalableMixin):
@@ -247,4 +244,3 @@ class PersistentVolumeClaim(NamespacedAPIObject):
     version = "v1"
     endpoint = "persistentvolumeclaims"
     kind = "PersistentVolumeClaim"
-
