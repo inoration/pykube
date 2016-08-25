@@ -1,8 +1,6 @@
 import copy
 import json
-import os.path as op
-
-import six
+from time import sleep
 
 from .exceptions import ObjectDoesNotExist
 from .mixins import ReplicatedMixin, ScalableMixin
@@ -13,7 +11,6 @@ from .utils import obj_merge
 DEFAULT_NAMESPACE = "default"
 
 
-@six.python_2_unicode_compatible
 class APIObject(object):
 
     objects = ObjectManager()
@@ -24,15 +21,10 @@ class APIObject(object):
         self.api = api
         self.set_obj(obj)
 
+
     def set_obj(self, obj):
         self.obj = obj
         self._original_obj = copy.deepcopy(obj)
-
-    def __repr__(self):
-        return "<{kind} {name}>".format(kind=self.kind, name=self.name)
-
-    def __str__(self):
-        return self.name
 
     @property
     def name(self):
@@ -44,14 +36,11 @@ class APIObject(object):
 
     def api_kwargs(self, **kwargs):
         kw = {}
-        # Construct url for api request
-        obj_list = kwargs.pop("obj_list", False)
-        if obj_list:
+        collection = kwargs.pop("collection", False)
+        if collection:
             kw["url"] = self.endpoint
         else:
-            operation = kwargs.pop("operation", "")
-            kw["url"] = op.normpath(op.join(self.endpoint, self.name, operation))
-
+            kw["url"] = "{}/{}".format(self.endpoint, self._original_obj["metadata"]["name"])
         if self.base:
             kw["base"] = self.base
         kw["version"] = self.version
@@ -72,7 +61,7 @@ class APIObject(object):
         return True
 
     def create(self):
-        r = self.api.post(**self.api_kwargs(data=json.dumps(self.obj), obj_list=True))
+        r = self.api.post(**self.api_kwargs(data=json.dumps(self.obj), collection=True))
         self.api.raise_for_status(r)
         self.set_obj(r.json())
 
@@ -94,6 +83,24 @@ class APIObject(object):
         r = self.api.delete(**self.api_kwargs())
         if r.status_code != 404:
             self.api.raise_for_status(r)
+
+    def scale(self,replicas):
+        r = self.api.patch(**self.api_kwargs(
+            headers={"Content-Type": "application/merge-patch+json"},
+            data='{"spec": {"replicas": %d}}' % replicas,
+        ))
+        if r.status_code != 404:
+            self.api.raise_for_status(r)
+
+    @property
+    def status(self,all=False):
+        r = self.api.get(**self.api_kwargs())
+        if r.status_code != 404:
+            self.api.raise_for_status(r)
+        if all:
+            return r.json()
+        else:
+            return r.json()['status']
 
 
 class NamespacedAPIObject(APIObject):
@@ -128,13 +135,6 @@ class Deployment(NamespacedAPIObject, ReplicatedMixin, ScalableMixin):
     endpoint = "deployments"
     kind = "Deployment"
 
-    @property
-    def ready(self):
-        return (
-            self.obj["status"]["observedGeneration"] >= self.obj["metadata"]["generation"] and
-            self.obj["status"]["updatedReplicas"] == self.replicas
-        )
-
 
 class Endpoint(NamespacedAPIObject):
 
@@ -143,39 +143,11 @@ class Endpoint(NamespacedAPIObject):
     kind = "Endpoint"
 
 
-class Event(NamespacedAPIObject):
-
-    version = "v1"
-    endpoint = "events"
-    kind = "Event"
-
-
-class ResourceQuota(NamespacedAPIObject):
-
-    version = "v1"
-    endpoint = "resourcequotas"
-    kind = "ResourceQuota"
-
-
-class ServiceAccount(NamespacedAPIObject):
-
-    version = "v1"
-    endpoint = "serviceaccounts"
-    kind = "ServiceAccount"
-
-
 class Ingress(NamespacedAPIObject):
 
     version = "extensions/v1beta1"
     endpoint = "ingresses"
     kind = "Ingress"
-
-
-class ThirdPartyResource(APIObject):
-
-    version = "extensions/v1beta1"
-    endpoint = "thirdpartyresources"
-    kind = "ThirdPartyResource"
 
 
 class Job(NamespacedAPIObject, ScalableMixin):
@@ -227,6 +199,20 @@ class ReplicationController(NamespacedAPIObject, ReplicatedMixin, ScalableMixin)
     endpoint = "replicationcontrollers"
     kind = "ReplicationController"
 
+    def wait_to_death(self):
+        while (self.status['replicas']!=0):
+            sleep(0.1)
+        r = self.api.delete(**self.api_kwargs())
+        if r.status_code != 404:
+            self.api.raise_for_status(r)
+
+
+    def delete(self, block=True):
+        self.scale(0)
+        if block:
+            self.wait_to_death()
+
+
 
 class ReplicaSet(NamespacedAPIObject, ReplicatedMixin, ScalableMixin):
 
@@ -262,16 +248,3 @@ class PersistentVolumeClaim(NamespacedAPIObject):
     endpoint = "persistentvolumeclaims"
     kind = "PersistentVolumeClaim"
 
-
-class HorizontalPodAutoscaler(NamespacedAPIObject):
-
-    version = "autoscaling/v1"
-    endpoint = "horizontalpodautoscalers"
-    kind = "HorizontalPodAutoscaler"
-
-
-class PetSet(NamespacedAPIObject):
-
-    version = "apps/v1alpha1"
-    endpoint = "petsets"
-    kind = "PetSet"

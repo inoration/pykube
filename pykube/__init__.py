@@ -27,3 +27,9 @@ from .objects import (  # noqa
     ThirdPartyResource,
 )
 from .query import now, all_ as all, everything  # noqa
+
+#temporarily
+import requests
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+

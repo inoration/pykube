@@ -30,7 +30,7 @@ class HTTPClient(object):
         """
         self.config = config
         self.url = self.config.cluster["server"]
-        self.session = self.build_session()
+        self.session = self.build_session(config.verify)
 
     @property
     def url(self):
@@ -39,28 +39,26 @@ class HTTPClient(object):
     @url.setter
     def url(self, value):
         pr = urlparse(value)
-        if sys.version_info < (3, 5) and ("::" in pr.hostname or _ipv4_re.match(pr.hostname)):
-            warnings.warn("IP address hostnames are not supported with Python < 3.5. Please see https://github.com/kelproject/pykube/issues/29 for more info.", RuntimeWarning)
+        if sys.version_info < (2, 7, 9) and ("::" in pr.hostname or _ipv4_re.match(pr.hostname)):
+            warnings.warn("IP address hostnames are not supported with Python < 2.7.9. Please see https://github.com/kelproject/pykube/issues/29 for more info.", RuntimeWarning)
         self._url = pr.geturl()
 
-    def build_session(self):
+    def build_session(self, verify=False):
         """
         Creates a new session for the client.
         """
         s = requests.Session()
         if "certificate-authority" in self.config.cluster:
             s.verify = self.config.cluster["certificate-authority"].filename()
-        elif "insecure-skip-tls-verify" in self.config.cluster:
-            s.verify = not self.config.cluster["insecure-skip-tls-verify"]
+        if verify == False:
+            s.verify = False
         if "token" in self.config.user and self.config.user["token"]:
             s.headers["Authorization"] = "Bearer {}".format(self.config.user["token"])
-        elif "client-certificate" in self.config.user:
+        else:
             s.cert = (
                 self.config.user["client-certificate"].filename(),
                 self.config.user["client-key"].filename(),
             )
-        else:  # no user present; don't configure anything
-            pass
         return s
 
     def get_kwargs(self, **kwargs):
@@ -73,7 +71,7 @@ class HTTPClient(object):
         version = kwargs.pop("version", "v1")
         if version == "v1":
             base = kwargs.pop("base", "/api")
-        elif "/" in version:
+        elif any(map(version.startswith, ["extensions/", "batch/"])):
             base = kwargs.pop("base", "/apis")
         else:
             if "base" not in kwargs:
@@ -185,3 +183,4 @@ class HTTPClient(object):
            - `kwargs`: Keyword arguments
         """
         return self.session.delete(*args, **self.get_kwargs(**kwargs))
+
