@@ -79,7 +79,7 @@ class KubeConfig(object):
             default_cluster = doc["clusters"][0]["name"]
             doc["contexts"] = [{"context": {"cluster": default_cluster}, "name": "default"}]
         if "current-context" not in doc or not doc["current-context"]:
-            doc["current-context"] = "default"
+            doc["current-context"] = doc["contexts"][0]["name"]
         self = cls(doc, verify)
         self.filename = filename
         return self
