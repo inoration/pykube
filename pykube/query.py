@@ -74,6 +74,12 @@ class Query(BaseQuery):
             raise ObjectDoesNotExist("get() returned zero objects")
         raise ValueError("get() more than one object; use filter")
 
+    def get_or_none(self, *args, **kwargs):
+        try:
+            return self.get(*args, **kwargs)
+        except ObjectDoesNotExist:
+            return None
+
     def watch(self, since=None):
         kwargs = {"namespace": self.namespace}
         if since is now:
@@ -82,20 +88,31 @@ class Query(BaseQuery):
             kwargs["resource_version"] = since
         return WatchQuery(self.api, self.api_obj_class, **kwargs)
 
+    def execute(self):
+        kwargs = {"url": self._build_api_url()}
+        if self.api_obj_class.base:
+            kwargs["base"] = self.api_obj_class.base
+        if self.api_obj_class.version:
+            kwargs["version"] = self.api_obj_class.version
+        if self.namespace is not None and self.namespace is not all_:
+            kwargs["namespace"] = self.namespace
+        r = self.api.get(**kwargs)
+        r.raise_for_status()
+        return r
+
+    def iterator(self):
+        """
+        Execute the API request and return an iterator over the objects. This
+        method does not use the query cache.
+        """
+        for obj in self.execute().json()["items"]:
+            yield self.api_obj_class(self.api, obj)
+
     @property
     def query_cache(self):
         if not hasattr(self, "_query_cache"):
             cache = {"objects": []}
-            kwargs = {"url": self._build_api_url()}
-            if self.api_obj_class.base:
-                kwargs["base"] = self.api_obj_class.base
-            if self.api_obj_class.version:
-                kwargs["version"] = self.api_obj_class.version
-            if self.namespace is not None and self.namespace is not all_:
-                kwargs["namespace"] = self.namespace
-            r = self.api.get(**kwargs)
-            r.raise_for_status()
-            cache["response"] = r.json()
+            cache["response"] = self.execute().json()
             for obj in cache["response"]["items"]:
                 cache["objects"].append(self.api_obj_class(self.api, obj))
             self._query_cache = cache
@@ -129,6 +146,8 @@ class WatchQuery(BaseQuery):
             "url": url,
             "stream": True,
         }
+        if self.api_obj_class.version:
+            kwargs["version"] = self.api_obj_class.version
         r = self.api.get(**kwargs)
         self.api.raise_for_status(r)
         WatchEvent = namedtuple("WatchEvent", "type object")
@@ -145,8 +164,10 @@ class ObjectManager(object):
     def __init__(self, namespace=None):
         self.namespace = namespace
 
-    def __call__(self, api):
-        return Query(api, self.api_obj_class, namespace=self.namespace)
+    def __call__(self, api, namespace=None):
+        if namespace is None:
+            namespace = self.namespace
+        return Query(api, self.api_obj_class, namespace=namespace)
 
     def __get__(self, obj, api_obj_class):
         assert obj is None, "cannot invoke objects on resource object."
@@ -177,5 +198,5 @@ def as_selector(value):
         elif op == "notin":
             s.append("{} notin ({})".format(label, ",".join(v)))
         else:
-            raise ValueError("{} is not a valid comparsion operator".format(op))
+            raise ValueError("{} is not a valid comparison operator".format(op))
     return ",".join(s)

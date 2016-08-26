@@ -1,6 +1,9 @@
 import copy
 import json
+import os.path as op
 from time import sleep
+
+import six
 
 from .exceptions import ObjectDoesNotExist
 from .mixins import ReplicatedMixin, ScalableMixin
@@ -11,6 +14,7 @@ from .utils import obj_merge
 DEFAULT_NAMESPACE = "default"
 
 
+@six.python_2_unicode_compatible
 class APIObject(object):
 
     objects = ObjectManager()
@@ -25,6 +29,12 @@ class APIObject(object):
         self.obj = obj
         self._original_obj = copy.deepcopy(obj)
 
+    def __repr__(self):
+        return "<{kind} {name}>".format(kind=self.kind, name=self.name)
+
+    def __str__(self):
+        return self.name
+
     @property
     def name(self):
         return self.obj["metadata"]["name"]
@@ -35,11 +45,14 @@ class APIObject(object):
 
     def api_kwargs(self, **kwargs):
         kw = {}
-        collection = kwargs.pop("collection", False)
-        if collection:
+        # Construct url for api request
+        obj_list = kwargs.pop("obj_list", False)
+        if obj_list:
             kw["url"] = self.endpoint
         else:
-            kw["url"] = "{}/{}".format(self.endpoint, self._original_obj["metadata"]["name"])
+            operation = kwargs.pop("operation", "")
+            kw["url"] = op.normpath(op.join(self.endpoint, self.name, operation))
+
         if self.base:
             kw["base"] = self.base
         kw["version"] = self.version
@@ -60,7 +73,7 @@ class APIObject(object):
         return True
 
     def create(self):
-        r = self.api.post(**self.api_kwargs(data=json.dumps(self.obj), collection=True))
+        r = self.api.post(**self.api_kwargs(data=json.dumps(self.obj), obj_list=True))
         self.api.raise_for_status(r)
         self.set_obj(r.json())
 
@@ -134,6 +147,13 @@ class Deployment(NamespacedAPIObject, ReplicatedMixin, ScalableMixin):
     endpoint = "deployments"
     kind = "Deployment"
 
+    @property
+    def ready(self):
+        return (
+            self.obj["status"]["observedGeneration"] >= self.obj["metadata"]["generation"] and
+            self.obj["status"]["updatedReplicas"] == self.replicas
+        )
+
 
 class Endpoint(NamespacedAPIObject):
 
@@ -142,11 +162,39 @@ class Endpoint(NamespacedAPIObject):
     kind = "Endpoint"
 
 
+class Event(NamespacedAPIObject):
+
+    version = "v1"
+    endpoint = "events"
+    kind = "Event"
+
+
+class ResourceQuota(NamespacedAPIObject):
+
+    version = "v1"
+    endpoint = "resourcequotas"
+    kind = "ResourceQuota"
+
+
+class ServiceAccount(NamespacedAPIObject):
+
+    version = "v1"
+    endpoint = "serviceaccounts"
+    kind = "ServiceAccount"
+
+
 class Ingress(NamespacedAPIObject):
 
     version = "extensions/v1beta1"
     endpoint = "ingresses"
     kind = "Ingress"
+
+
+class ThirdPartyResource(APIObject):
+
+    version = "extensions/v1beta1"
+    endpoint = "thirdpartyresources"
+    kind = "ThirdPartyResource"
 
 
 class Job(NamespacedAPIObject, ScalableMixin):
@@ -244,3 +292,17 @@ class PersistentVolumeClaim(NamespacedAPIObject):
     version = "v1"
     endpoint = "persistentvolumeclaims"
     kind = "PersistentVolumeClaim"
+
+
+class HorizontalPodAutoscaler(NamespacedAPIObject):
+
+    version = "autoscaling/v1"
+    endpoint = "horizontalpodautoscalers"
+    kind = "HorizontalPodAutoscaler"
+
+
+class PetSet(NamespacedAPIObject):
+
+    version = "apps/v1alpha1"
+    endpoint = "petsets"
+    kind = "PetSet"

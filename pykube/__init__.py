@@ -28,7 +28,7 @@ from .objects import (  # noqa
 )
 from .query import now, all_ as all, everything  # noqa
 
-#temporarily
+# temporarily
 import requests
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)

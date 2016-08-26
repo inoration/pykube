@@ -66,15 +66,42 @@ class KubeConfig(object):
 
         :Parameters:
            - `filename`: The full path to the configuration file
-                         Default: ~/.kube/config
         """
         filename = os.path.expanduser(filename)
         if not os.path.isfile(filename):
             raise exceptions.PyKubeError("Configuration file {} not found".format(filename))
-        with open(filename, 'r') as f:
+        with open(filename) as f:
             doc = yaml.safe_load(f.read())
         self = cls(doc, verify)
         self.filename = filename
+        return self
+
+    @classmethod
+    def from_url(cls, url):
+        """
+        Creates an instance of the KubeConfig class from a single URL (useful
+        for interacting with kubectl proxy).
+        """
+        doc = {
+            "clusters": [
+                {
+                    "name": "self",
+                    "cluster": {
+                        "server": url,
+                    },
+                },
+            ],
+            "contexts": [
+                {
+                    "name": "self",
+                    "context": {
+                        "cluster": "self",
+                    },
+                }
+            ],
+            "current-context": "self",
+        }
+        self = cls(doc)
         return self
 
     def __init__(self, doc, verify=False):
@@ -84,11 +111,16 @@ class KubeConfig(object):
         self.doc = doc
         self.current_context = None
         self.verify = verify
+        for i in range(len(self.doc["clusters"])):
+            if "name" not in self.doc["clusters"][i]:
+                self.doc["clusters"][i]["name"] = "default" + str(i)
+        if not self.doc["contexts"]:
+            default_cluster = self.doc["clusters"][0]["name"]
+            self.doc["contexts"] = [{"context": {"cluster": default_cluster}, "name": "default"}]
+        if not self.doc["current-context"]:
+            self.doc["current-context"] = "default"
         if "current-context" in doc and doc["current-context"]:
             self.set_current_context(doc["current-context"])
-        if self.current_context is None:
-            self.set_current_context('default')
-            self.doc["clusters"][0]["name"] = 'default'  # If current_context is not set, consider the first cluster as default.
 
     def set_current_context(self, value):
         """
@@ -121,10 +153,11 @@ class KubeConfig(object):
         """
         if not hasattr(self, "_users"):
             us = {}
-            for ur in self.doc["users"]:
-                us[ur["name"]] = u = copy.deepcopy(ur["user"])
-                BytesOrFile.maybe_set(u, "client-certificate")
-                BytesOrFile.maybe_set(u, "client-key")
+            if "users" in self.doc:
+                for ur in self.doc["users"]:
+                    us[ur["name"]] = u = copy.deepcopy(ur["user"])
+                    BytesOrFile.maybe_set(u, "client-certificate")
+                    BytesOrFile.maybe_set(u, "client-key")
             self._users = us
         return self._users
 
@@ -157,7 +190,7 @@ class KubeConfig(object):
         """
         if self.current_context is None:
             raise exceptions.PyKubeError("current context not set; call set_current_context")
-        return self.users[self.contexts[self.current_context]["user"]]
+        return self.users.get(self.contexts[self.current_context].get("user", ""), {})
 
 
 class BytesOrFile(object):
@@ -184,7 +217,7 @@ class BytesOrFile(object):
         """
         self._filename = None
         self._bytes = None
-        if data.startswith("/"):
+        if os.path.isfile(data):
             self._filename = data
         else:
             self._bytes = base64.b64decode(data)
