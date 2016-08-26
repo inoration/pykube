@@ -72,6 +72,8 @@ class KubeConfig(object):
             raise exceptions.PyKubeError("Configuration file {} not found".format(filename))
         with open(filename) as f:
             doc = yaml.safe_load(f.read())
+        if "clusters" not in doc or not doc["clusters"]:
+            raise exceptions.PyKubeError("Do not have cluster.")
         for i in range(len(doc["clusters"])):
             if "name" not in doc["clusters"][i]:
                 doc["clusters"][i]["name"] = "default" + str(i)
