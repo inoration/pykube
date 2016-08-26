@@ -72,6 +72,14 @@ class KubeConfig(object):
             raise exceptions.PyKubeError("Configuration file {} not found".format(filename))
         with open(filename) as f:
             doc = yaml.safe_load(f.read())
+        for i in range(len(doc["clusters"])):
+            if "name" not in doc["clusters"][i]:
+                doc["clusters"][i]["name"] = "default" + str(i)
+        if not doc["contexts"]:
+            default_cluster = doc["clusters"][0]["name"]
+            doc["contexts"] = [{"context": {"cluster": default_cluster}, "name": "default"}]
+        if not doc["current-context"]:
+            doc["current-context"] = "default"
         self = cls(doc, verify)
         self.filename = filename
         return self
@@ -111,14 +119,6 @@ class KubeConfig(object):
         self.doc = doc
         self.current_context = None
         self.verify = verify
-        for i in range(len(self.doc["clusters"])):
-            if "name" not in self.doc["clusters"][i]:
-                self.doc["clusters"][i]["name"] = "default" + str(i)
-        if not self.doc["contexts"]:
-            default_cluster = self.doc["clusters"][0]["name"]
-            self.doc["contexts"] = [{"context": {"cluster": default_cluster}, "name": "default"}]
-        if not self.doc["current-context"]:
-            self.doc["current-context"] = "default"
         if "current-context" in doc and doc["current-context"]:
             self.set_current_context(doc["current-context"])
 
